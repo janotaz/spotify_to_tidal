@@ -294,8 +294,14 @@ async def sync_playlist(spotify_session: spotipy.Spotify, tidal_session: tidalap
     spotify_tracks = await get_tracks_from_spotify_playlist(spotify_session, spotify_playlist)
     if len(spotify_tracks) == 0:
         return # nothing to do
+
     if tidal_playlist:
         old_tidal_tracks = await get_all_playlist_tracks(tidal_playlist)
+        # If playlist was not found (returns None), recreate it
+        if old_tidal_tracks is None:
+            print(f"Creating new Tidal playlist '{spotify_playlist['name']}'")
+            tidal_playlist = tidal_session.user.create_playlist(spotify_playlist['name'], spotify_playlist['description'])
+            old_tidal_tracks = []
     else:
         print(f"No playlist found on Tidal corresponding to Spotify playlist: '{spotify_playlist['name']}', creating new playlist")
         tidal_playlist =  tidal_session.user.create_playlist(spotify_playlist['name'], spotify_playlist['description'])
@@ -344,7 +350,13 @@ async def sync_favorites(spotify_session: spotipy.Spotify, tidal_session: tidala
     new_tidal_favorite_ids = get_new_tidal_favorites()
     if new_tidal_favorite_ids:
         for tidal_id in tqdm(new_tidal_favorite_ids, desc="Adding new tracks to Tidal favorites"):
-            tidal_session.user.favorites.add_track(tidal_id)
+            try:
+                tidal_session.user.favorites.add_track(tidal_id)
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    print(f"Warning: Could not add track {tidal_id} to favorites (404). Track may no longer exist.")
+                else:
+                    raise
     else:
         print("No new tracks to add to Tidal favorites")
 

@@ -4,6 +4,7 @@ from typing import List
 import tidalapi
 from tqdm import tqdm
 from tqdm.asyncio import tqdm as atqdm
+import requests
 
 def _remove_indices_from_playlist(playlist: tidalapi.UserPlaylist, indices: List[int]):
     headers = {'If-None-Match': playlist._etag}
@@ -69,11 +70,18 @@ async def get_all_playlists(user: tidalapi.User, chunk_size: int=10) -> List[tid
     }
     return await _get_all_chunks(f"users/{user.id}/playlists", session=user.session, parser=user.playlist.parse_factory, params=params)
 
-async def get_all_playlist_tracks(playlist: tidalapi.Playlist, chunk_size: int=20) -> List[tidalapi.Track]:
-    """ Get all tracks from Tidal playlist in chunks """
+async def get_all_playlist_tracks(playlist: tidalapi.Playlist, chunk_size: int=20):
+    """ Get all tracks from Tidal playlist in chunks. Returns None if playlist doesn't exist (404), otherwise returns List[tidalapi.Track] """
     params = {
         "limit": chunk_size,
     }
     print(f"Loading tracks from Tidal playlist '{playlist.name}'")
-    return await _get_all_chunks(f"{playlist._base_url%playlist.id}/tracks", session=playlist.session, parser=playlist.session.parse_track, params=params)
+    try:
+        return await _get_all_chunks(f"{playlist._base_url%playlist.id}/tracks", session=playlist.session, parser=playlist.session.parse_track, params=params)
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            print(f"Warning: Tidal playlist '{playlist.name}' not found (404). It may have been deleted.")
+            return None
+        else:
+            raise
 
